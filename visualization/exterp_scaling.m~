@@ -1,0 +1,10 @@
+clc
+clear all
+dat=xlsread('data_cpu.xls', 'scale');
+prk45=dat(:,2);
+prk23=dat(:,4);
+scalin_fac=dat(:,1);
+plot(scalin_fac,prk45);
+hold on;
+plot(scalin_fac,prk23);
+rk45_1= interp1(scalin_fac,prk45,1,'linear','extrap');

@@ -1,0 +1,39 @@
+# Compiler
+FC = ifort
+# Compiler flags
+
+CFLAGS = -O2 -traceback -debug -qopenmp -xHost -ipo -pg -g -fp-model source #-par-report1 #-fpe0 -ftz #-parallel -par-threshold99 #-parallel -par-threshold0 #-par-report1 #-CB -CU -debug -traceback -fpe0
+
+# Directories
+PWD    = $(shell pwd)
+OBJDIR = $(PWD)/obj
+SRCDIR = $(PWD)/src/src_fort
+
+ODEPACKDIR = $(PWD)/solver_dir/ODEPACK
+
+# Libraries
+LIBS = -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -lpthread -lm
+
+# Files and folders
+TARGET = eperm_odepack                        
+_OBJ = global_var_dir.o opkda1.o opkda2.o opkdmain.o util_eperm.o solve_eperm_odepack.o 
+	
+OBJ = $(patsubst %,$(OBJDIR)/%,$(_OBJ))
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.f90 $(OBJS)
+	$(FC) -c -o $@ $< $(CFLAGS) -module $(OBJDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.f $(OBJS)
+	$(FC) -c -o $@ $< $(CFLAGS) -module $(OBJDIR)
+$(OBJDIR)/%.o: $(ODEPACKDIR)/%.f $(OBJS)
+	$(FC) -c -o $@ $< $(CFLAGS) -module $(OBJDIR)
+
+$(TARGET): $(OBJ)
+#	$(FC) -o $@ $^ $(CFLAGS) $(LIBS) -I$(FFTDIR) -I$(OBJDIR)
+	$(FC) -o $@ $^ $(CFLAGS) -I$(OBJDIR)
+
+.PHONY: clean
+
+clean:
+	rm -f $(OBJDIR)/*.o
+	rm -f $(OBJDIR)/*.mod
+

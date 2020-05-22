@@ -1,0 +1,25 @@
+	SUBROUTINE bsstep(y,dydx,x,htry,eps,yscal,hdid,hnext,derivs)
+	
+	USE nrtype; USE nrutil, ONLY : arth,assert_eq,cumsum,iminloc,nrerror,&
+		outerdiff,outerprod,upper_triangle
+	USE nr_bsstep, ONLY : mmid,pzextr
+	
+	IMPLICIT NONE
+	REAL(DP), DIMENSION(:), INTENT(INOUT) :: y
+	REAL(DP), DIMENSION(:), INTENT(IN) :: dydx,yscal
+	REAL(DP), INTENT(INOUT) :: x
+	REAL(DP), INTENT(IN) :: htry,eps
+	REAL(DP), INTENT(OUT) :: hdid,hnext
+	INTERFACE
+		SUBROUTINE derivs(x,y,dydx)
+		IMPLICIT NONE
+		REAL(8), INTENT(IN) :: x
+		REAL(8), DIMENSION(:), INTENT(IN) :: y
+		REAL(8), DIMENSION(:), INTENT(OUT) :: dydx
+		END SUBROUTINE derivs
+	END INTERFACE
+	INTEGER(I4B), PARAMETER :: IMAX=9, KMAXX=IMAX-1
+	REAL(DP), PARAMETER :: SAFE1=0.25_dp,SAFE2=0.7_dp,REDMAX=1.0e-5_dp,&
+		REDMIN=0.7_dp,TINY=1.0e-30_dp,SCALMX=0.8_dp
+	INTEGER(I4B) :: k,km,ndum
+	INTEGER(I4B), DIMENSION(IMAX) :: nseq = 

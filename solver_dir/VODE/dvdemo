@@ -1,0 +1,888 @@
+*DECK DVDEMO
+C-----------------------------------------------------------------------
+C Demonstration program for the DVODE package.
+C This is the version of 30 April 2002.
+C
+C This version is in double precision, suitable for short wordlength
+C computers, PCs, work-stations, etc.
+C
+C The package is used to solve two simple problems,
+C one with a full Jacobian, the other with a banded Jacobian,
+C with all 12 of the appropriate values of MF in each case.
+C If the errors are too large, or other difficulty occurs,
+C a warning message is printed.  All output is on unit LOUT = 6.
+C-----------------------------------------------------------------------
+C
+      EXTERNAL F1, JAC1, F2, JAC2
+      INTEGER I, IOPAR, IOPT, IOUT, IPAR, ISTATE, ITASK, ITOL, IWORK,
+     1   JSV, LENIW, LENRW, LIW, LOUT, LRW, MBAND, METH, MF, MITER,
+     2   ML, MU, NCFN, NEQ, NERR, NETF, NFE, NFEA, NJE, NLU, NNI, NOUT,
+     3   NQU, NST
+      DOUBLE PRECISION ATOL, DTOUT, ER, ERM, ERO, HU, RPAR, RTOL, RWORK,
+     1   T, TOUT, TOUT1, Y
+      DIMENSION Y(25), RWORK(847), IWORK(55)
+      DATA LOUT/6/, TOUT1/1.39283880203D0/, DTOUT/2.214773875D0/
+C
+      NERR = 0
+      ITOL = 1
+      RTOL = 0.0D0
+      ATOL = 1.0D-6
+      LRW = 847
+      LIW = 55
+      IOPT = 0
+C
+C First problem
+C
+      NEQ = 2
+      NOUT = 4
+      WRITE (LOUT,110) NEQ,ITOL,RTOL,ATOL
+ 110  FORMAT(' Demonstration program for DVODE package'//
+     1  ' Problem 1:   Van der Pol oscillator:'/
+     2  '   xdotdot - 3*(1 - x**2)*xdot + x = 0,' ,
+     3  '   x(0) = 2, xdot(0) = 0'/
+     4  '   NEQ =',I2/
+     5  '   ITOL =',I3,'   RTOL =',D10.1,'   ATOL =',D10.1)
+C
+      DO 195 JSV = 1,-1,-2
+      DO 192 METH = 1,2
+      DO 190 MITER = 0,3
+      IF (JSV .LT. 0 .AND. MITER .EQ. 0) GO TO 190
+      IF (JSV .LT. 0 .AND. MITER .EQ. 3) GO TO 190
+      MF = JSV*(10*METH + MITER)
+      WRITE (LOUT,120) MF
+ 120  FORMAT(//70('*')//' Solution with MF =',I4//
+     1  6X,'t',15X,'x',15X,'xdot',7X,'NQ',6X,'H'/)
+      T = 0.0D0
+      Y(1) = 2.0D0
+      Y(2) = 0.0D0
+      ITASK = 1
+      ISTATE = 1
+      TOUT = TOUT1
+      ERO = 0.0D0
+      DO 170 IOUT = 1,NOUT
+        CALL DVODE(F1,NEQ,Y,T,TOUT,ITOL,RTOL,ATOL,ITASK,ISTATE,
+     1     IOPT,RWORK,LRW,IWORK,LIW,JAC1,MF,RPAR,IPAR)
+        HU = RWORK(11)
+        NQU = IWORK(14)
+        WRITE (LOUT,140) T,Y(1),Y(2),NQU,HU
+ 140    FORMAT(1X,D15.5,D16.5,D14.3,I5,D14.3)
+        IF (ISTATE .LT. 0) GO TO 175
+        IOPAR = IOUT - 2*(IOUT/2)
+        IF (IOPAR .NE. 0) GO TO 170
+        ER = ABS(Y(1))/ATOL
+        ERO = MAX(ERO,ER)
+        IF (ER .LT. 10000.0D0) GO TO 170
+        WRITE (LOUT,150)
+ 150    FORMAT(//' Warning: Error exceeds 10000 * tolerance'//)
+        NERR = NERR + 1
+ 170    TOUT = TOUT + DTOUT
+ 175  CONTINUE
+      IF (ISTATE .LT. 0) NERR = NERR + 1
+      NST = IWORK(11)
+      NFE = IWORK(12)
+      NJE = IWORK(13)
+      NLU = IWORK(19)
+      LENRW = IWORK(17)
+      LENIW = IWORK(18)
+      NNI = IWORK(20)
+      NCFN = IWORK(21)
+      NETF = IWORK(22)
+      NFEA = NFE
+      IF (MITER .EQ. 2) NFEA = NFE - NEQ*NJE
+      IF (MITER .EQ. 3) NFEA = NFE - NJE
+      WRITE (LOUT,180) LENRW,LENIW,NST,NFE,NFEA,NJE,NLU,NNI,NCFN,
+     1                 NETF,ERO
+ 180  FORMAT(//' Final statistics for this run:'/
+     1  ' RWORK size =',I4,'   IWORK size =',I4/
+     2  ' Number of steps =',I5/
+     3  ' Number of f-s   =',I5/
+     4  ' (excluding J-s) =',I5/
+     5  ' Number of J-s   =',I5/
+     6  ' Number of LU-s  =',I5/
+     7  ' Number of nonlinear iterations =', I5/
+     8  ' Number of nonlinear convergence failures =', I5/
+     9  ' Number of error test failures =', I5/
+     1  ' Error overrun =',D10.2)
+ 190  CONTINUE
+ 192  CONTINUE
+ 195  CONTINUE
+C
+C Second problem
+C
+      NEQ = 25
+      ML = 5
+      MU = 0
+      IWORK(1) = ML
+      IWORK(2) = MU
+      MBAND = ML + MU + 1
+      NOUT = 5
+      WRITE (LOUT,210) NEQ,ML,MU,ITOL,RTOL,ATOL
+ 210  FORMAT(//70('*')//' Demonstration program for DVODE package'//
+     1  ' Problem 2: ydot = A * y , where',
+     2  ' A is a banded lower triangular matrix'/
+     3  '   derived from 2-D advection PDE'/
+     4  '   NEQ =',I3,'   ML =',I2,'   MU =',I2/
+     5  '   ITOL =',I3,'   RTOL =',D10.1,'   ATOL =',D10.1)
+C
+      DO 295 JSV = 1,-1,-2
+      DO 292 METH = 1,2
+      DO 290 MITER = 0,5
+      IF (MITER .EQ. 1 .OR. MITER .EQ. 2) GO TO 290
+      IF (JSV .LT. 0 .AND. MITER .EQ. 0) GO TO 290
+      IF (JSV .LT. 0 .AND. MITER .EQ. 3) GO TO 290
+      MF = JSV*(10*METH + MITER)
+      WRITE (LOUT,220) MF
+ 220  FORMAT(//70('*')//' Solution with MF =',I4//
+     1  6X,'t',13X,'Max.Err.',5X,'NQ',6X,'H'/)
+      T = 0.0D0
+      DO 230 I = 2,NEQ
+ 230    Y(I) = 0.0D0
+      Y(1) = 1.0D0
+      ITASK = 1
+      ISTATE = 1
+      TOUT = 0.01D0
+      ERO = 0.0D0
+      DO 270 IOUT = 1,NOUT
+        CALL DVODE(F2,NEQ,Y,T,TOUT,ITOL,RTOL,ATOL,ITASK,ISTATE,
+     1     IOPT,RWORK,LRW,IWORK,LIW,JAC2,MF,RPAR,IPAR)
+        CALL EDIT2(Y,T,ERM)
+        HU = RWORK(11)
+        NQU = IWORK(14)
+        WRITE (LOUT,240) T,ERM,NQU,HU
+ 240    FORMAT(1X,D15.5,D14.3,I5,D14.3)
+        IF (ISTATE .LT. 0) GO TO 275
+        ER = ERM/ATOL
+        ERO = MAX(ERO,ER)
+        IF (ER .LE. 1000.0D0) GO TO 270
+        WRITE (LOUT,150)
+        NERR = NERR + 1
+ 270    TOUT = TOUT*10.0D0
+ 275  CONTINUE
+      IF (ISTATE .LT. 0) NERR = NERR + 1
+      NST = IWORK(11)
+      NFE = IWORK(12)
+      NJE = IWORK(13)
+      NLU = IWORK(19)
+      LENRW = IWORK(17)
+      LENIW = IWORK(18)
+      NNI = IWORK(20)
+      NCFN = IWORK(21)
+      NETF = IWORK(22)
+      NFEA = NFE
+      IF (MITER .EQ. 5) NFEA = NFE - MBAND*NJE
+      IF (MITER .EQ. 3) NFEA = NFE - NJE
+      WRITE (LOUT,180) LENRW,LENIW,NST,NFE,NFEA,NJE,NLU,NNI,NCFN,
+     1                 NETF,ERO
+ 290  CONTINUE
+ 292  CONTINUE
+ 295  CONTINUE
+C
+      WRITE (LOUT,300) NERR
+ 300  FORMAT(//70('*')//' Number of errors encountered =',I3)
+      STOP
+      END
+      SUBROUTINE F1 (NEQ, T, Y, YDOT, RPAR, IPAR)
+      INTEGER NEQ, IPAR
+      DOUBLE PRECISION T, Y, YDOT, RPAR
+      DIMENSION Y(2), YDOT(2), RPAR(*), IPAR(*)
+      YDOT(1) = Y(2)
+      YDOT(2) = 3.0D0*(1.0D0 - Y(1)*Y(1))*Y(2) - Y(1)
+      RETURN
+      END
+      SUBROUTINE JAC1 (NEQ, T, Y, ML, MU, PD, NROWPD, RPAR, IPAR)
+      INTEGER NEQ, ML, MU, NROWPD, IPAR
+      DOUBLE PRECISION T, Y, PD, RPAR
+      DIMENSION Y(2), PD(NROWPD,2), RPAR(*), IPAR(*)
+      PD(1,1) = 0.0D0
+      PD(1,2) = 1.0D0
+      PD(2,1) = -6.0D0*Y(1)*Y(2) - 1.0D0
+      PD(2,2) = 3.0D0*(1.0D0 - Y(1)*Y(1))
+      RETURN
+      END
+      SUBROUTINE F2 (NEQ, T, Y, YDOT, RPAR, IPAR)
+      INTEGER NEQ, I, IPAR, J, K, NG
+      DOUBLE PRECISION T, Y, YDOT, RPAR, ALPH1, ALPH2, D
+      DIMENSION Y(NEQ), YDOT(NEQ), RPAR(*), IPAR(*)
+      DATA ALPH1/1.0D0/, ALPH2/1.0D0/, NG/5/
+      DO 10 J = 1,NG
+      DO 10 I = 1,NG
+        K = I + (J - 1)*NG
+        D = -2.0D0*Y(K)
+        IF (I .NE. 1) D = D + Y(K-1)*ALPH1
+        IF (J .NE. 1) D = D + Y(K-NG)*ALPH2
+ 10     YDOT(K) = D
+      RETURN
+      END
+      SUBROUTINE JAC2 (NEQ, T, Y, ML, MU, PD, NROWPD, RPAR, IPAR)
+      INTEGER NEQ, ML, MU, NROWPD, IPAR, J, MBAND, MU1, MU2, NG
+      DOUBLE PRECISION T, Y, PD, RPAR, ALPH1, ALPH2
+      DIMENSION Y(NEQ), PD(NROWPD,NEQ), RPAR(*), IPAR(*)
+      DATA ALPH1/1.0D0/, ALPH2/1.0D0/, NG/5/
+      MBAND = ML + MU + 1
+      MU1 = MU + 1
+      MU2 = MU + 2
+      DO 10 J = 1,NEQ
+        PD(MU1,J) = -2.0D0
+        PD(MU2,J) = ALPH1
+ 10     PD(MBAND,J) = ALPH2
+      DO 20 J = NG,NEQ,NG
+ 20     PD(MU2,J) = 0.0D0
+      RETURN
+      END
+      SUBROUTINE EDIT2 (Y, T, ERM)
+      INTEGER I, J, K, NG
+      DOUBLE PRECISION Y, T, ERM, ALPH1, ALPH2, A1, A2, ER, EX, YT
+      DIMENSION Y(25)
+      DATA ALPH1/1.0D0/, ALPH2/1.0D0/, NG/5/
+      ERM = 0.0D0
+      IF (T .EQ. 0.0D0) RETURN
+      EX = 0.0D0
+      IF (T .LE. 30.0D0) EX = EXP(-2.0D0*T)
+      A2 = 1.0D0
+      DO 60 J = 1,NG
+        A1 = 1.0D0
+        DO 50 I = 1,NG
+          K = I + (J - 1)*NG
+          YT = T**(I+J-2)*EX*A1*A2
+          ER = ABS(Y(K)-YT)
+          ERM = MAX(ERM,ER)
+          A1 = A1*ALPH1/I
+ 50       CONTINUE
+        A2 = A2*ALPH2/J
+ 60     CONTINUE
+      RETURN
+      END
+
+ Demonstration program for DVODE package
+
+ Problem 1:   Van der Pol oscillator:
+   xdotdot - 3*(1 - x**2)*xdot + x = 0,   x(0) = 2, xdot(0) = 0
+   NEQ = 2
+   ITOL =  1   RTOL =   0.0D+00   ATOL =   0.1D-05
+
+
+**********************************************************************
+
+ Solution with MF =  10
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.986D-01
+     0.36076D+01    -0.21239D-04    -0.317D+01    5     0.228D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    4     0.141D+00
+     0.80372D+01     0.95761D-04     0.317D+01    5     0.203D-01
+
+
+ Final statistics for this run:
+ RWORK size =  52   IWORK size =  30
+ Number of steps =  196
+ Number of f-s   =  390
+ (excluding J-s) =  390
+ Number of J-s   =    0
+ Number of LU-s  =    0
+ Number of nonlinear iterations =    0
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   15
+ Error overrun =  0.96D+02
+
+
+**********************************************************************
+
+ Solution with MF =  11
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    7     0.652D-01
+     0.36076D+01     0.24294D-05    -0.317D+01    7     0.206D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    7     0.130D+00
+     0.80372D+01     0.19908D-04     0.317D+01    7     0.239D-01
+
+
+ Final statistics for this run:
+ RWORK size =  62   IWORK size =  32
+ Number of steps =  266
+ Number of f-s   =  365
+ (excluding J-s) =  365
+ Number of J-s   =    5
+ Number of LU-s  =   46
+ Number of nonlinear iterations =  362
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   23
+ Error overrun =  0.20D+02
+
+
+**********************************************************************
+
+ Solution with MF =  12
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.658D-01
+     0.36076D+01    -0.22805D-04    -0.317D+01    6     0.318D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    6     0.935D-01
+     0.80372D+01    -0.98521D-05     0.317D+01    6     0.281D-01
+
+
+ Final statistics for this run:
+ RWORK size =  62   IWORK size =  32
+ Number of steps =  195
+ Number of f-s   =  275
+ (excluding J-s) =  267
+ Number of J-s   =    4
+ Number of LU-s  =   34
+ Number of nonlinear iterations =  264
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   15
+ Error overrun =  0.23D+02
+
+
+**********************************************************************
+
+ Solution with MF =  13
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    6     0.596D-01
+     0.36076D+01     0.63607D-04    -0.317D+01    6     0.289D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    5     0.982D-01
+     0.80372D+01    -0.66427D-04     0.317D+01    6     0.238D-01
+
+
+ Final statistics for this run:
+ RWORK size =  56   IWORK size =  30
+ Number of steps =  239
+ Number of f-s   =  374
+ (excluding J-s) =  333
+ Number of J-s   =   41
+ Number of LU-s  =    0
+ Number of nonlinear iterations =  330
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   20
+ Error overrun =  0.66D+02
+
+
+**********************************************************************
+
+ Solution with MF =  20
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    4     0.961D-01
+     0.36076D+01    -0.13564D-03    -0.317D+01    5     0.157D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    5     0.112D+00
+     0.80372D+01     0.22097D-03     0.317D+01    5     0.147D-01
+
+
+ Final statistics for this run:
+ RWORK size =  38   IWORK size =  30
+ Number of steps =  262
+ Number of f-s   =  497
+ (excluding J-s) =  497
+ Number of J-s   =    0
+ Number of LU-s  =    0
+ Number of nonlinear iterations =    0
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   22
+ Error overrun =  0.22D+03
+
+
+**********************************************************************
+
+ Solution with MF =  21
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.120D+00
+     0.36076D+01    -0.54691D-04    -0.317D+01    5     0.164D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    4     0.101D+00
+     0.80372D+01     0.15431D-03     0.317D+01    4     0.954D-02
+
+
+ Final statistics for this run:
+ RWORK size =  48   IWORK size =  32
+ Number of steps =  265
+ Number of f-s   =  357
+ (excluding J-s) =  357
+ Number of J-s   =    5
+ Number of LU-s  =   40
+ Number of nonlinear iterations =  354
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   18
+ Error overrun =  0.15D+03
+
+
+**********************************************************************
+
+ Solution with MF =  22
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    4     0.811D-01
+     0.36076D+01    -0.58420D-04    -0.317D+01    4     0.114D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    5     0.649D-01
+     0.80372D+01     0.96174D-04     0.317D+01    5     0.152D-01
+
+
+ Final statistics for this run:
+ RWORK size =  48   IWORK size =  32
+ Number of steps =  276
+ Number of f-s   =  378
+ (excluding J-s) =  366
+ Number of J-s   =    6
+ Number of LU-s  =   40
+ Number of nonlinear iterations =  363
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   17
+ Error overrun =  0.96D+02
+
+
+**********************************************************************
+
+ Solution with MF =  23
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.114D+00
+     0.36076D+01    -0.98350D-04    -0.317D+01    5     0.167D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    4     0.813D-01
+     0.80372D+01     0.16664D-03     0.317D+01    4     0.105D-01
+
+
+ Final statistics for this run:
+ RWORK size =  42   IWORK size =  30
+ Number of steps =  266
+ Number of f-s   =  398
+ (excluding J-s) =  359
+ Number of J-s   =   39
+ Number of LU-s  =    0
+ Number of nonlinear iterations =  356
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   17
+ Error overrun =  0.17D+03
+
+
+**********************************************************************
+
+ Solution with MF = -11
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    6     0.103D+00
+     0.36076D+01    -0.30324D-04    -0.317D+01    5     0.186D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    6     0.144D+00
+     0.80372D+01     0.63353D-04     0.317D+01    6     0.313D-01
+
+
+ Final statistics for this run:
+ RWORK size =  58   IWORK size =  32
+ Number of steps =  186
+ Number of f-s   =  249
+ (excluding J-s) =  249
+ Number of J-s   =   33
+ Number of LU-s  =   33
+ Number of nonlinear iterations =  246
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   14
+ Error overrun =  0.63D+02
+
+
+**********************************************************************
+
+ Solution with MF = -12
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    6     0.103D+00
+     0.36076D+01    -0.30324D-04    -0.317D+01    5     0.186D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    6     0.144D+00
+     0.80372D+01     0.63353D-04     0.317D+01    6     0.313D-01
+
+
+ Final statistics for this run:
+ RWORK size =  58   IWORK size =  32
+ Number of steps =  186
+ Number of f-s   =  315
+ (excluding J-s) =  249
+ Number of J-s   =   33
+ Number of LU-s  =   33
+ Number of nonlinear iterations =  246
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   14
+ Error overrun =  0.63D+02
+
+
+**********************************************************************
+
+ Solution with MF = -21
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.120D+00
+     0.36076D+01    -0.81755D-04    -0.317D+01    5     0.143D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    4     0.820D-01
+     0.80372D+01     0.21243D-03     0.317D+01    4     0.111D-01
+
+
+ Final statistics for this run:
+ RWORK size =  44   IWORK size =  32
+ Number of steps =  266
+ Number of f-s   =  347
+ (excluding J-s) =  347
+ Number of J-s   =   37
+ Number of LU-s  =   37
+ Number of nonlinear iterations =  344
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   16
+ Error overrun =  0.21D+03
+
+
+**********************************************************************
+
+ Solution with MF = -22
+
+      t               x               xdot       NQ      H
+
+     0.13928D+01     0.16801D+01    -0.291D+00    5     0.120D+00
+     0.36076D+01    -0.81755D-04    -0.317D+01    5     0.143D-01
+     0.58224D+01    -0.16801D+01     0.291D+00    4     0.820D-01
+     0.80372D+01     0.21243D-03     0.317D+01    4     0.111D-01
+
+
+ Final statistics for this run:
+ RWORK size =  44   IWORK size =  32
+ Number of steps =  266
+ Number of f-s   =  421
+ (excluding J-s) =  347
+ Number of J-s   =   37
+ Number of LU-s  =   37
+ Number of nonlinear iterations =  344
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =   16
+ Error overrun =  0.21D+03
+
+
+**********************************************************************
+
+ Demonstration program for DVODE package
+
+ Problem 2: ydot = A * y , where A is a banded lower triangular matrix
+   derived from 2-D advection PDE
+   NEQ = 25   ML = 5   MU = 0
+   ITOL =  1   RTOL =   0.0D+00   ATOL =   0.1D-05
+
+
+**********************************************************************
+
+ Solution with MF =  10
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.147D-06    3     0.115D-01
+     0.10000D+00     0.525D-06    4     0.414D-01
+     0.10000D+01     0.122D-05    5     0.682D-01
+     0.10000D+02     0.977D-06    3     0.285D+00
+     0.10000D+03     0.318D-09    1     0.260D+00
+
+
+ Final statistics for this run:
+ RWORK size = 420   IWORK size =  30
+ Number of steps =  343
+ Number of f-s   =  601
+ (excluding J-s) =  601
+ Number of J-s   =    0
+ Number of LU-s  =    0
+ Number of nonlinear iterations =    0
+ Number of nonlinear convergence failures =   79
+ Number of error test failures =    0
+ Error overrun =  0.12D+01
+
+
+**********************************************************************
+
+ Solution with MF =  13
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.137D-06    3     0.103D-01
+     0.10000D+00     0.250D-05    3     0.230D-01
+     0.10000D+01     0.423D-05    4     0.438D-01
+     0.10000D+02     0.973D-06    4     0.313D+00
+     0.10000D+03     0.958D-09    1     0.385D+03
+
+
+ Final statistics for this run:
+ RWORK size = 447   IWORK size =  30
+ Number of steps =  154
+ Number of f-s   =  251
+ (excluding J-s) =  218
+ Number of J-s   =   33
+ Number of LU-s  =    0
+ Number of nonlinear iterations =  215
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    5
+ Error overrun =  0.42D+01
+
+
+**********************************************************************
+
+ Solution with MF =  14
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.137D-06    3     0.122D-01
+     0.10000D+00     0.479D-06    4     0.421D-01
+     0.10000D+01     0.251D-06    6     0.104D+00
+     0.10000D+02     0.608D-06    4     0.472D+00
+     0.10000D+03     0.574D-07    2     0.108D+02
+
+
+ Final statistics for this run:
+ RWORK size = 847   IWORK size =  55
+ Number of steps =  149
+ Number of f-s   =  183
+ (excluding J-s) =  183
+ Number of J-s   =    3
+ Number of LU-s  =   32
+ Number of nonlinear iterations =  180
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    6
+ Error overrun =  0.61D+00
+
+
+**********************************************************************
+
+ Solution with MF =  15
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.143D-06    3     0.138D-01
+     0.10000D+00     0.573D-06    4     0.421D-01
+     0.10000D+01     0.733D-06    5     0.637D-01
+     0.10000D+02     0.385D-06    5     0.260D+00
+     0.10000D+03     0.410D-11    1     0.626D+02
+
+
+ Final statistics for this run:
+ RWORK size = 847   IWORK size =  55
+ Number of steps =  124
+ Number of f-s   =  159
+ (excluding J-s) =  141
+ Number of J-s   =    3
+ Number of LU-s  =   24
+ Number of nonlinear iterations =  138
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    1
+ Error overrun =  0.73D+00
+
+
+**********************************************************************
+
+ Solution with MF =  20
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.559D-06    2     0.813D-02
+     0.10000D+00     0.529D-05    3     0.178D-01
+     0.10000D+01     0.232D-05    5     0.753D-01
+     0.10000D+02     0.129D-05    5     0.278D+00
+     0.10000D+03     0.284D-06    1     0.257D+00
+
+
+ Final statistics for this run:
+ RWORK size = 245   IWORK size =  30
+ Number of steps =  372
+ Number of f-s   =  692
+ (excluding J-s) =  692
+ Number of J-s   =    0
+ Number of LU-s  =    0
+ Number of nonlinear iterations =    0
+ Number of nonlinear convergence failures =   56
+ Number of error test failures =    1
+ Error overrun =  0.53D+01
+
+
+**********************************************************************
+
+ Solution with MF =  23
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.564D-06    2     0.812D-02
+     0.10000D+00     0.798D-06    4     0.189D-01
+     0.10000D+01     0.591D-05    5     0.520D-01
+     0.10000D+02     0.214D-05    4     0.310D+00
+     0.10000D+03     0.177D-08    1     0.558D+02
+
+
+ Final statistics for this run:
+ RWORK size = 272   IWORK size =  30
+ Number of steps =  177
+ Number of f-s   =  312
+ (excluding J-s) =  265
+ Number of J-s   =   47
+ Number of LU-s  =    0
+ Number of nonlinear iterations =  262
+ Number of nonlinear convergence failures =    2
+ Number of error test failures =    5
+ Error overrun =  0.59D+01
+
+
+**********************************************************************
+
+ Solution with MF =  24
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.564D-06    2     0.812D-02
+     0.10000D+00     0.528D-05    3     0.178D-01
+     0.10000D+01     0.182D-05    5     0.601D-01
+     0.10000D+02     0.550D-06    5     0.417D+00
+     0.10000D+03     0.178D-08    2     0.297D+02
+
+
+ Final statistics for this run:
+ RWORK size = 672   IWORK size =  55
+ Number of steps =  119
+ Number of f-s   =  143
+ (excluding J-s) =  143
+ Number of J-s   =    3
+ Number of LU-s  =   25
+ Number of nonlinear iterations =  140
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    2
+ Error overrun =  0.53D+01
+
+
+**********************************************************************
+
+ Solution with MF =  25
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.565D-06    2     0.814D-02
+     0.10000D+00     0.600D-05    3     0.171D-01
+     0.10000D+01     0.169D-05    5     0.876D-01
+     0.10000D+02     0.523D-06    5     0.311D+00
+     0.10000D+03     0.144D-08    2     0.216D+02
+
+
+ Final statistics for this run:
+ RWORK size = 672   IWORK size =  55
+ Number of steps =  121
+ Number of f-s   =  162
+ (excluding J-s) =  144
+ Number of J-s   =    3
+ Number of LU-s  =   24
+ Number of nonlinear iterations =  141
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    1
+ Error overrun =  0.60D+01
+
+
+**********************************************************************
+
+ Solution with MF = -14
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.137D-06    3     0.122D-01
+     0.10000D+00     0.479D-06    4     0.421D-01
+     0.10000D+01     0.251D-06    6     0.104D+00
+     0.10000D+02     0.608D-06    4     0.472D+00
+     0.10000D+03     0.574D-07    2     0.108D+02
+
+
+ Final statistics for this run:
+ RWORK size = 697   IWORK size =  55
+ Number of steps =  149
+ Number of f-s   =  183
+ (excluding J-s) =  183
+ Number of J-s   =   32
+ Number of LU-s  =   32
+ Number of nonlinear iterations =  180
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    6
+ Error overrun =  0.61D+00
+
+
+**********************************************************************
+
+ Solution with MF = -15
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.137D-06    3     0.122D-01
+     0.10000D+00     0.479D-06    4     0.421D-01
+     0.10000D+01     0.251D-06    6     0.104D+00
+     0.10000D+02     0.608D-06    4     0.472D+00
+     0.10000D+03     0.574D-07    2     0.108D+02
+
+
+ Final statistics for this run:
+ RWORK size = 697   IWORK size =  55
+ Number of steps =  149
+ Number of f-s   =  375
+ (excluding J-s) =  183
+ Number of J-s   =   32
+ Number of LU-s  =   32
+ Number of nonlinear iterations =  180
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    6
+ Error overrun =  0.61D+00
+
+
+**********************************************************************
+
+ Solution with MF = -24
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.564D-06    2     0.812D-02
+     0.10000D+00     0.528D-05    3     0.178D-01
+     0.10000D+01     0.182D-05    5     0.601D-01
+     0.10000D+02     0.550D-06    5     0.417D+00
+     0.10000D+03     0.178D-08    2     0.297D+02
+
+
+ Final statistics for this run:
+ RWORK size = 522   IWORK size =  55
+ Number of steps =  119
+ Number of f-s   =  143
+ (excluding J-s) =  143
+ Number of J-s   =   25
+ Number of LU-s  =   25
+ Number of nonlinear iterations =  140
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    2
+ Error overrun =  0.53D+01
+
+
+**********************************************************************
+
+ Solution with MF = -25
+
+      t             Max.Err.     NQ      H
+
+     0.10000D-01     0.564D-06    2     0.812D-02
+     0.10000D+00     0.528D-05    3     0.178D-01
+     0.10000D+01     0.182D-05    5     0.601D-01
+     0.10000D+02     0.550D-06    5     0.417D+00
+     0.10000D+03     0.178D-08    2     0.297D+02
+
+
+ Final statistics for this run:
+ RWORK size = 522   IWORK size =  55
+ Number of steps =  119
+ Number of f-s   =  293
+ (excluding J-s) =  143
+ Number of J-s   =   25
+ Number of LU-s  =   25
+ Number of nonlinear iterations =  140
+ Number of nonlinear convergence failures =    0
+ Number of error test failures =    2
+ Error overrun =  0.53D+01
+
+
+**********************************************************************
+
+ Number of errors encountered =  0

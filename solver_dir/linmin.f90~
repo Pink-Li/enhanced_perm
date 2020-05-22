@@ -1,0 +1,34 @@
+	SUBROUTINE amoeba(p,y,ftol,func,iter,rtol)
+	USE nrtype; USE nrutil, ONLY : assert_eq,imaxloc,iminloc,nrerror,swap
+	IMPLICIT NONE
+	INTEGER(I4B), INTENT(OUT) :: iter
+	REAL(DP), INTENT(OUT)     :: rtol
+	REAL(DP), INTENT(IN) :: ftol
+	REAL(DP), DIMENSION(:), INTENT(INOUT) :: y
+	REAL(DP), DIMENSION(:,:), INTENT(INOUT) :: p
+	INTERFACE
+		FUNCTION func(x)
+		USE nrtype
+		IMPLICIT NONE
+		REAL(DP), DIMENSION(:), INTENT(IN) :: x
+		REAL(DP) :: func
+		END FUNCTION func
+	END INTERFACE
+	INTEGER(I4B), PARAMETER :: ITMAX=5000
+	REAL(DP), PARAMETER :: TINY=1.0e-8
+	INTEGER(I4B) :: ihi,ndim
+	REAL(DP), DIMENSION(size(p,2)) :: psum
+	call amoeba_private
+	CONTAINS
+!BL
+	SUBROUTINE amoeba_private
+	IMPLICIT NONE
+	INTEGER(I4B) :: i,ilo,inhi
+	REAL(DP) :: ysave,ytry,ytmp
+	ndim=assert_eq(size(p,2),size(p,1)-1,size(y)-1,'amoeba')
+	iter=0
+	psum(:)=sum(p(:,:),dim=1)
+	do
+		ilo=iminloc(y(:))
+		ihi=imaxloc(y(:))
+		ytmp=y(ihi)

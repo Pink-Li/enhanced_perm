@@ -1,0 +1,8 @@
+100.d0          ! P0 
+1d0             ! Pend
+1d-3            ! diffusivity
+5d-2 			! gamma
+100.d0           ! Ld, total domain length, in meters
+0.1d0           ! timestepping
+10000       !  time steps
+100.d0          ! discretization level

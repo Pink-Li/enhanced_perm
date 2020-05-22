@@ -1,0 +1,1169 @@
+C-----------------------------------------------------------------------
+C Demonstration Program for the ZVODE package.
+C This is the version of 6 September 2006.
+C
+C The package is used to solve a 2-variable initial value problem,
+C dw1/dt = -i*w1*w1*w2, dw2/dt = i*w2, w1(0) = 1/2.1, w2(0) = 1.
+C The true solution is: w1 = 1/[exp(it) + 1.1], w2 = exp(it).
+C w1 traces a circle of radius 10/2.1, center 11/2.1;
+C w2 traces the unit circle.
+C ZVODE is used with all 20 valid values of MF.
+C
+C For convenience, Main passes RPAR = imaginary unit i.
+C Note:  Some compilers may issue a warning about inconsistent type
+C for RPAR.  Compiling ZVODE separately from this program is likely to
+C avoid this warning.
+C-----------------------------------------------------------------------
+      EXTERNAL FEX, JEX, JEXB
+      DOUBLE COMPLEX W(2), ZWORK(44), RPAR, WTRU, ERR
+      DOUBLE PRECISION ABERR, ATOL, RTOL, RWORK(22), T, TOUT
+      DIMENSION IWORK(32)
+      NEQ = 2
+      DTOUT = 0.3141592653589793D0
+      ITOL = 1
+      RTOL = 1.D-9
+      ATOL = 1.D-8
+      ITASK = 1
+      IOPT = 0
+      LZW = 44
+      LRW = 22
+      LIW = 32
+      IWORK(1) = 1
+      IWORK(2) = 1
+      RPAR = DCMPLX(0.0D0,1.0D0)
+      NERR = 0
+      WRITE(6,10) RTOL, ATOL
+ 10   FORMAT('Demonstration Program for ZVODE'//
+     1       'w1dot = -i*w1*w1*w2, w2dot = i*w2',
+     2       '  w1(0) = 1/2.1, w2(0) = 1'/
+     3       'RTOL =',D10.1,'  ATOL =',D10.1/)
+C
+      DO 80 JSV = 1,-1,-2
+      DO 80 METH = 1,2
+      DO 80 MITER =0,5
+      IF (JSV .LT. 0 .AND. MITER .EQ. 0) GO TO 80
+      IF (JSV .LT. 0 .AND. MITER .EQ. 3) GO TO 80
+      MF = JSV*(10*METH + MITER)
+      WRITE(6,20) MF
+ 20   FORMAT(80('*')//'Solution with MF =',i4//)
+C
+      T = 0.0D0
+      W(1) = 1.0D0/2.1D0
+      W(2) = 1.0D0
+      ISTATE = 1
+      TOUT = DTOUT
+      DO 40 IOUT = 1,20
+        IF (MITER .LT. 4)
+     1  CALL ZVODE(FEX,NEQ,W,T,TOUT,ITOL,RTOL,ATOL,ITASK,ISTATE,IOPT,
+     2             ZWORK,LZW,RWORK,LRW,IWORK,LIW,JEX,MF,RPAR,IPAR)
+        IF (MITER .GE. 4)
+     1  CALL ZVODE(FEX,NEQ,W,T,TOUT,ITOL,RTOL,ATOL,ITASK,ISTATE,IOPT,
+     2             ZWORK,LZW,RWORK,LRW,IWORK,LIW,JEXB,MF,RPAR,IPAR)
+        WTRU = 1.0D0/DCMPLX(COS(T) + 1.1D0, SIN(T))
+        ERR = W(1) - WTRU
+        ABERR = ABS(DREAL(ERR)) + ABS(DIMAG(ERR))
+        WRITE(6,30) T, DREAL(W(1)),DIMAG(W(1)), DREAL(W(2)),DIMAG(W(2)),
+     1              ABERR
+ 30     FORMAT('t =',F8.5,'   w1 =',2D13.5,'   w2 =',2D13.5/
+     1         47x,'abs. error in w1 =',D9.2)
+        IF (ISTATE .LT. 0) GO TO 45
+        IF (ABERR .GT. 1.0D-3) THEN
+          WRITE(6,35)
+ 35       FORMAT(/'Warning: Error exceeds 1.0E-3'/)
+          NERR = NERR + 1
+          ENDIF
+ 40     TOUT = TOUT + DTOUT
+ 45   IF (ISTATE .LT. 0) NERR = NERR + 1   
+      WRITE(6,50) IWORK(11),IWORK(12),IWORK(13),IWORK(20),
+     1            IWORK(21),IWORK(22),IWORK(23)
+ 50   FORMAT(/'Final statistics for this run:'/
+     1        'No. steps =',I5,'   No. f-s =',I5,
+     2        '   No. J-s =',I4,'   No. LU-s =',I4/
+     3        'No. nonlinear iterations =',I4/
+     4        'No. nonlinear convergence failures =',I4/
+     5        'No. error test failures =',I4/)
+C
+ 80   CONTINUE
+C
+      WRITE(6,90) NERR
+ 90   FORMAT(80('*')//'Number of errors encountered =',I3)
+      STOP
+      END
+C
+      SUBROUTINE FEX (NEQ, T, W, WDOT, RPAR, IPAR)
+C     Right-hand side routine.
+      DOUBLE COMPLEX W(2), WDOT(2), RPAR
+      DOUBLE PRECISION T
+      WDOT(1) = -RPAR*W(1)*W(1)*W(2)
+      WDOT(2) = RPAR*W(2)
+      RETURN
+      END
+C
+      SUBROUTINE JEX (NEQ, T, W, ML, MU, PD, NRPD, RPAR, IPAR)
+C     Dense Jacobian routine.
+      DOUBLE COMPLEX W(NEQ), PD(NRPD,NEQ), RPAR
+      DOUBLE PRECISION T
+      PD(1,1) = -2.0D0*RPAR*W(1)*W(2)
+      PD(1,2) = -RPAR*W(1)*W(1)
+      PD(2,2) = RPAR
+      RETURN
+      END
+C
+      SUBROUTINE JEXB (NEQ, T, W, ML, MU, PD, NRPD, RPAR, IPAR)
+C     Banded Jacobian routine.
+      DOUBLE COMPLEX W(NEQ), PD(NRPD,NEQ), RPAR
+      DOUBLE PRECISION T
+      PD(2,1) = -2.0D0*RPAR*W(1)*W(2)
+      PD(1,2) = -RPAR*W(1)*W(1)
+      PD(2,2) = RPAR
+      RETURN
+      END
+
+Demonstration Program for ZVODE
+
+w1dot = -i*w1*w1*w2, w2dot = i*w2  w1(0) = 1/2.1, w2(0) = 1
+RTOL =   0.1E-08  ATOL =   0.1E-07
+
+********************************************************************************
+
+Solution with MF =  10
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.18E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.11E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.39E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.85E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.54438E-07  0.10000E+01
+                                               abs. error in w1 = 0.15E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.29E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.58E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.13E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.45E-05
+t = 3.14159   w1 =  0.10000E+02  0.23515E-04   w2 = -0.10000E+01 -0.98256E-07
+                                               abs. error in w1 = 0.52E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.46E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.13E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.62E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.36E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.14196E-06 -0.10000E+01
+                                               abs. error in w1 = 0.20E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.17E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.15E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.14E-06
+t = 6.28319   w1 =  0.47619E+00 -0.21370E-07   w2 =  0.10000E+01  0.18516E-06
+                                               abs. error in w1 = 0.12E-06
+
+Final statistics for this run:
+No. steps =  369   No. f-s =  640   No. J-s =   0   No. LU-s =   0
+No. nonlinear iterations =   0
+No. nonlinear convergence failures =   0
+No. error test failures =  17
+
+********************************************************************************
+
+Solution with MF =  11
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.16E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.74E-08
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.27E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42858E-07  0.10000E+01
+                                               abs. error in w1 = 0.38E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.86E-07
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.60E-06
+t = 3.14159   w1 =  0.10000E+02  0.10505E-04   w2 = -0.10000E+01 -0.86122E-07
+                                               abs. error in w1 = 0.61E-05
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.56E-06
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.11E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.70E-07
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12983E-06 -0.10000E+01
+                                               abs. error in w1 = 0.35E-07
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.43E-07
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.38E-07
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.66E-07
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.71E-07
+t = 6.28319   w1 =  0.47619E+00 -0.74148E-07   w2 =  0.10000E+01  0.16153E-06
+                                               abs. error in w1 = 0.72E-07
+
+Final statistics for this run:
+No. steps =  322   No. f-s =  416   No. J-s =   6   No. LU-s =  49
+No. nonlinear iterations = 413
+No. nonlinear convergence failures =   0
+No. error test failures =  21
+
+********************************************************************************
+
+Solution with MF =  12
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.16E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.74E-08
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.27E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42858E-07  0.10000E+01
+                                               abs. error in w1 = 0.38E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.86E-07
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.60E-06
+t = 3.14159   w1 =  0.10000E+02  0.10505E-04   w2 = -0.10000E+01 -0.86122E-07
+                                               abs. error in w1 = 0.61E-05
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.56E-06
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.11E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.70E-07
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12983E-06 -0.10000E+01
+                                               abs. error in w1 = 0.35E-07
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.43E-07
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.38E-07
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.66E-07
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.71E-07
+t = 6.28319   w1 =  0.47619E+00 -0.74148E-07   w2 =  0.10000E+01  0.16153E-06
+                                               abs. error in w1 = 0.72E-07
+
+Final statistics for this run:
+No. steps =  322   No. f-s =  428   No. J-s =   6   No. LU-s =  49
+No. nonlinear iterations = 413
+No. nonlinear convergence failures =   0
+No. error test failures =  21
+
+********************************************************************************
+
+Solution with MF =  13
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.18E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.74E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.22E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.58E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.50762E-07  0.10000E+01
+                                               abs. error in w1 = 0.15E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.27E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.50E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.43E-05
+t = 3.14159   w1 =  0.10000E+02  0.40250E-04   w2 = -0.10000E+01 -0.94563E-07
+                                               abs. error in w1 = 0.58E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.36E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.10E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.47E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.32E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.13824E-06 -0.10000E+01
+                                               abs. error in w1 = 0.23E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.13E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.10E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.12E-06
+t = 6.28319   w1 =  0.47619E+00  0.23795E-07   w2 =  0.10000E+01  0.18244E-06
+                                               abs. error in w1 = 0.11E-06
+
+Final statistics for this run:
+No. steps =  360   No. f-s =  504   No. J-s =  58   No. LU-s =   0
+No. nonlinear iterations = 443
+No. nonlinear convergence failures =   0
+No. error test failures =  22
+
+********************************************************************************
+
+Solution with MF =  14
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.16E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.74E-08
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.27E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42858E-07  0.10000E+01
+                                               abs. error in w1 = 0.38E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.86E-07
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.60E-06
+t = 3.14159   w1 =  0.10000E+02  0.10505E-04   w2 = -0.10000E+01 -0.86122E-07
+                                               abs. error in w1 = 0.61E-05
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.56E-06
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.11E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.70E-07
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12983E-06 -0.10000E+01
+                                               abs. error in w1 = 0.35E-07
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.43E-07
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.38E-07
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.66E-07
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.71E-07
+t = 6.28319   w1 =  0.47619E+00 -0.74148E-07   w2 =  0.10000E+01  0.16153E-06
+                                               abs. error in w1 = 0.72E-07
+
+Final statistics for this run:
+No. steps =  322   No. f-s =  416   No. J-s =   6   No. LU-s =  49
+No. nonlinear iterations = 413
+No. nonlinear convergence failures =   0
+No. error test failures =  21
+
+********************************************************************************
+
+Solution with MF =  15
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.16E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.74E-08
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.27E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42858E-07  0.10000E+01
+                                               abs. error in w1 = 0.38E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.86E-07
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.22E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.60E-06
+t = 3.14159   w1 =  0.10000E+02  0.10505E-04   w2 = -0.10000E+01 -0.86122E-07
+                                               abs. error in w1 = 0.61E-05
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.56E-06
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.11E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.70E-07
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12983E-06 -0.10000E+01
+                                               abs. error in w1 = 0.35E-07
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.43E-07
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.38E-07
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.66E-07
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.71E-07
+t = 6.28319   w1 =  0.47619E+00 -0.74148E-07   w2 =  0.10000E+01  0.16153E-06
+                                               abs. error in w1 = 0.72E-07
+
+Final statistics for this run:
+No. steps =  322   No. f-s =  428   No. J-s =   6   No. LU-s =  49
+No. nonlinear iterations = 413
+No. nonlinear convergence failures =   0
+No. error test failures =  21
+
+********************************************************************************
+
+Solution with MF =  20
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.70E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.20E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.31E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.63E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.98948E-07  0.10000E+01
+                                               abs. error in w1 = 0.17E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.42E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.87E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.21E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.14159   w1 =  0.10000E+02  0.72690E-04   w2 = -0.10000E+01 -0.14312E-06
+                                               abs. error in w1 = 0.12E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.75E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.20E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.67E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.18690E-06 -0.10000E+01
+                                               abs. error in w1 = 0.46E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.30E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 6.28319   w1 =  0.47619E+00  0.70484E-07   w2 =  0.10000E+01  0.23825E-06
+                                               abs. error in w1 = 0.32E-06
+
+Final statistics for this run:
+No. steps =  538   No. f-s =  830   No. J-s =   0   No. LU-s =   0
+No. nonlinear iterations =   0
+No. nonlinear convergence failures =   0
+No. error test failures =  12
+
+********************************************************************************
+
+Solution with MF =  21
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.62E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.31E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.48E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.86E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12461E-06  0.10000E+01
+                                               abs. error in w1 = 0.21E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.47E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.25E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.83E-05
+t = 3.14159   w1 =  0.10000E+02  0.66315E-04   w2 = -0.10000E+01 -0.16879E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.71E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21254E-06 -0.10000E+01
+                                               abs. error in w1 = 0.46E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.29E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 6.28319   w1 =  0.47619E+00  0.40985E-07   w2 =  0.10000E+01  0.25783E-06
+                                               abs. error in w1 = 0.29E-06
+
+Final statistics for this run:
+No. steps =  542   No. f-s =  610   No. J-s =  10   No. LU-s =  47
+No. nonlinear iterations = 607
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF =  22
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.62E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.31E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.48E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.86E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12461E-06  0.10000E+01
+                                               abs. error in w1 = 0.21E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.47E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.25E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.83E-05
+t = 3.14159   w1 =  0.10000E+02  0.66315E-04   w2 = -0.10000E+01 -0.16879E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.71E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21254E-06 -0.10000E+01
+                                               abs. error in w1 = 0.46E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.29E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 6.28319   w1 =  0.47619E+00  0.40985E-07   w2 =  0.10000E+01  0.25783E-06
+                                               abs. error in w1 = 0.29E-06
+
+Final statistics for this run:
+No. steps =  542   No. f-s =  630   No. J-s =  10   No. LU-s =  47
+No. nonlinear iterations = 607
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF =  23
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.64E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.34E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.54E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.10E-06
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12491E-06  0.10000E+01
+                                               abs. error in w1 = 0.23E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.48E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.26E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.14159   w1 =  0.10000E+02  0.72278E-04   w2 = -0.10000E+01 -0.16910E-06
+                                               abs. error in w1 = 0.14E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.92E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.24E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.76E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21284E-06 -0.10000E+01
+                                               abs. error in w1 = 0.51E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.33E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.34E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.34E-06
+t = 6.28319   w1 =  0.47619E+00  0.53186E-07   w2 =  0.10000E+01  0.25837E-06
+                                               abs. error in w1 = 0.31E-06
+
+Final statistics for this run:
+No. steps =  541   No. f-s =  655   No. J-s =  47   No. LU-s =   0
+No. nonlinear iterations = 605
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF =  24
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.62E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.31E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.48E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.86E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12461E-06  0.10000E+01
+                                               abs. error in w1 = 0.21E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.47E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.25E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.83E-05
+t = 3.14159   w1 =  0.10000E+02  0.66315E-04   w2 = -0.10000E+01 -0.16879E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.71E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21254E-06 -0.10000E+01
+                                               abs. error in w1 = 0.46E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.29E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 6.28319   w1 =  0.47619E+00  0.40985E-07   w2 =  0.10000E+01  0.25783E-06
+                                               abs. error in w1 = 0.29E-06
+
+Final statistics for this run:
+No. steps =  542   No. f-s =  610   No. J-s =  10   No. LU-s =  47
+No. nonlinear iterations = 607
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF =  25
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.62E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.31E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.48E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.86E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12461E-06  0.10000E+01
+                                               abs. error in w1 = 0.21E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.47E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.25E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.83E-05
+t = 3.14159   w1 =  0.10000E+02  0.66315E-04   w2 = -0.10000E+01 -0.16879E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.87E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.23E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.71E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21254E-06 -0.10000E+01
+                                               abs. error in w1 = 0.46E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.29E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.31E-06
+t = 6.28319   w1 =  0.47619E+00  0.40985E-07   w2 =  0.10000E+01  0.25783E-06
+                                               abs. error in w1 = 0.29E-06
+
+Final statistics for this run:
+No. steps =  542   No. f-s =  630   No. J-s =  10   No. LU-s =  47
+No. nonlinear iterations = 607
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF = -11
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.17E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.24E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42990E-07  0.10000E+01
+                                               abs. error in w1 = 0.73E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.15E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.79E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.27E-05
+t = 3.14159   w1 =  0.10000E+02  0.27491E-04   w2 = -0.10000E+01 -0.86226E-07
+                                               abs. error in w1 = 0.42E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.30E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.85E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.44E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.28E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12994E-06 -0.10000E+01
+                                               abs. error in w1 = 0.19E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.21E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.22E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.17E-06
+t = 6.28319   w1 =  0.47619E+00  0.93321E-07   w2 =  0.10000E+01  0.17366E-06
+                                               abs. error in w1 = 0.20E-06
+
+Final statistics for this run:
+No. steps =  316   No. f-s =  407   No. J-s =  54   No. LU-s =  54
+No. nonlinear iterations = 404
+No. nonlinear convergence failures =   0
+No. error test failures =  25
+
+********************************************************************************
+
+Solution with MF = -12
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.17E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.24E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42990E-07  0.10000E+01
+                                               abs. error in w1 = 0.73E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.15E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.79E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.27E-05
+t = 3.14159   w1 =  0.10000E+02  0.27491E-04   w2 = -0.10000E+01 -0.86226E-07
+                                               abs. error in w1 = 0.42E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.30E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.85E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.44E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.28E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12994E-06 -0.10000E+01
+                                               abs. error in w1 = 0.19E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.21E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.22E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.17E-06
+t = 6.28319   w1 =  0.47619E+00  0.93321E-07   w2 =  0.10000E+01  0.17366E-06
+                                               abs. error in w1 = 0.20E-06
+
+Final statistics for this run:
+No. steps =  316   No. f-s =  515   No. J-s =  54   No. LU-s =  54
+No. nonlinear iterations = 404
+No. nonlinear convergence failures =   0
+No. error test failures =  25
+
+********************************************************************************
+
+Solution with MF = -14
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.17E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.24E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42990E-07  0.10000E+01
+                                               abs. error in w1 = 0.73E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.15E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.79E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.27E-05
+t = 3.14159   w1 =  0.10000E+02  0.27491E-04   w2 = -0.10000E+01 -0.86226E-07
+                                               abs. error in w1 = 0.42E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.30E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.85E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.44E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.28E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12994E-06 -0.10000E+01
+                                               abs. error in w1 = 0.19E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.21E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.22E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.17E-06
+t = 6.28319   w1 =  0.47619E+00  0.93321E-07   w2 =  0.10000E+01  0.17366E-06
+                                               abs. error in w1 = 0.20E-06
+
+Final statistics for this run:
+No. steps =  316   No. f-s =  407   No. J-s =  54   No. LU-s =  54
+No. nonlinear iterations = 404
+No. nonlinear convergence failures =   0
+No. error test failures =  25
+
+********************************************************************************
+
+Solution with MF = -15
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.17E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.24E-08
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.10E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.38E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.42990E-07  0.10000E+01
+                                               abs. error in w1 = 0.73E-07
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.15E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.79E-06
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.27E-05
+t = 3.14159   w1 =  0.10000E+02  0.27491E-04   w2 = -0.10000E+01 -0.86226E-07
+                                               abs. error in w1 = 0.42E-04
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.30E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.85E-06
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.44E-06
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.28E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.12994E-06 -0.10000E+01
+                                               abs. error in w1 = 0.19E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.21E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.22E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.18E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.17E-06
+t = 6.28319   w1 =  0.47619E+00  0.93321E-07   w2 =  0.10000E+01  0.17366E-06
+                                               abs. error in w1 = 0.20E-06
+
+Final statistics for this run:
+No. steps =  316   No. f-s =  515   No. J-s =  54   No. LU-s =  54
+No. nonlinear iterations = 404
+No. nonlinear convergence failures =   0
+No. error test failures =  25
+
+********************************************************************************
+
+Solution with MF = -21
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.63E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.33E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.50E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.90E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12465E-06  0.10000E+01
+                                               abs. error in w1 = 0.22E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.48E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.26E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.85E-05
+t = 3.14159   w1 =  0.10000E+02  0.70185E-04   w2 = -0.10000E+01 -0.16884E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.90E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.24E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.74E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21258E-06 -0.10000E+01
+                                               abs. error in w1 = 0.49E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.34E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.33E-06
+t = 6.28319   w1 =  0.47619E+00  0.49234E-07   w2 =  0.10000E+01  0.25810E-06
+                                               abs. error in w1 = 0.31E-06
+
+Final statistics for this run:
+No. steps =  541   No. f-s =  608   No. J-s =  47   No. LU-s =  47
+No. nonlinear iterations = 605
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF = -22
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.63E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.33E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.50E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.90E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12465E-06  0.10000E+01
+                                               abs. error in w1 = 0.22E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.48E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.26E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.85E-05
+t = 3.14159   w1 =  0.10000E+02  0.70185E-04   w2 = -0.10000E+01 -0.16884E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.90E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.24E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.74E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21258E-06 -0.10000E+01
+                                               abs. error in w1 = 0.49E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.34E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.33E-06
+t = 6.28319   w1 =  0.47619E+00  0.49234E-07   w2 =  0.10000E+01  0.25810E-06
+                                               abs. error in w1 = 0.31E-06
+
+Final statistics for this run:
+No. steps =  541   No. f-s =  702   No. J-s =  47   No. LU-s =  47
+No. nonlinear iterations = 605
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF = -24
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.63E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.33E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.50E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.90E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12465E-06  0.10000E+01
+                                               abs. error in w1 = 0.22E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.48E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.26E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.85E-05
+t = 3.14159   w1 =  0.10000E+02  0.70185E-04   w2 = -0.10000E+01 -0.16884E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.90E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.24E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.74E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21258E-06 -0.10000E+01
+                                               abs. error in w1 = 0.49E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.34E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.33E-06
+t = 6.28319   w1 =  0.47619E+00  0.49234E-07   w2 =  0.10000E+01  0.25810E-06
+                                               abs. error in w1 = 0.31E-06
+
+Final statistics for this run:
+No. steps =  541   No. f-s =  608   No. J-s =  47   No. LU-s =  47
+No. nonlinear iterations = 605
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Solution with MF = -25
+
+
+t = 0.31416   w1 =  0.47673E+00 -0.71826E-01   w2 =  0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.63E-08
+t = 0.62832   w1 =  0.47847E+00 -0.14732E+00   w2 =  0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.33E-07
+t = 0.94248   w1 =  0.48179E+00 -0.23094E+00   w2 =  0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.50E-07
+t = 1.25664   w1 =  0.48758E+00 -0.32910E+00   w2 =  0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.90E-07
+t = 1.57080   w1 =  0.49774E+00 -0.45249E+00   w2 = -0.12465E-06  0.10000E+01
+                                               abs. error in w1 = 0.22E-06
+t = 1.88496   w1 =  0.51693E+00 -0.62154E+00   w2 = -0.30902E+00  0.95106E+00
+                                               abs. error in w1 = 0.48E-06
+t = 2.19911   w1 =  0.55865E+00 -0.88237E+00   w2 = -0.58779E+00  0.80902E+00
+                                               abs. error in w1 = 0.11E-05
+t = 2.51327   w1 =  0.67645E+00 -0.13664E+01   w2 = -0.80902E+00  0.58779E+00
+                                               abs. error in w1 = 0.26E-05
+t = 2.82743   w1 =  0.12657E+01 -0.26260E+01   w2 = -0.95106E+00  0.30902E+00
+                                               abs. error in w1 = 0.85E-05
+t = 3.14159   w1 =  0.10000E+02  0.70185E-04   w2 = -0.10000E+01 -0.16884E-06
+                                               abs. error in w1 = 0.13E-03
+t = 3.45575   w1 =  0.12657E+01  0.26260E+01   w2 = -0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.90E-05
+t = 3.76991   w1 =  0.67645E+00  0.13664E+01   w2 = -0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.24E-05
+t = 4.08407   w1 =  0.55865E+00  0.88237E+00   w2 = -0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.12E-05
+t = 4.39823   w1 =  0.51693E+00  0.62154E+00   w2 = -0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.74E-06
+t = 4.71239   w1 =  0.49774E+00  0.45249E+00   w2 =  0.21258E-06 -0.10000E+01
+                                               abs. error in w1 = 0.49E-06
+t = 5.02655   w1 =  0.48758E+00  0.32910E+00   w2 =  0.30902E+00 -0.95106E+00
+                                               abs. error in w1 = 0.31E-06
+t = 5.34071   w1 =  0.48179E+00  0.23094E+00   w2 =  0.58779E+00 -0.80902E+00
+                                               abs. error in w1 = 0.32E-06
+t = 5.65487   w1 =  0.47847E+00  0.14732E+00   w2 =  0.80902E+00 -0.58779E+00
+                                               abs. error in w1 = 0.34E-06
+t = 5.96903   w1 =  0.47673E+00  0.71826E-01   w2 =  0.95106E+00 -0.30902E+00
+                                               abs. error in w1 = 0.33E-06
+t = 6.28319   w1 =  0.47619E+00  0.49234E-07   w2 =  0.10000E+01  0.25810E-06
+                                               abs. error in w1 = 0.31E-06
+
+Final statistics for this run:
+No. steps =  541   No. f-s =  702   No. J-s =  47   No. LU-s =  47
+No. nonlinear iterations = 605
+No. nonlinear convergence failures =   0
+No. error test failures =  13
+
+********************************************************************************
+
+Number of errors encountered =  0

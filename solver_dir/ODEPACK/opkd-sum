@@ -1,0 +1,515 @@
+*DECK DUMACH
+      DOUBLE PRECISION FUNCTION DUMACH ()
+C***BEGIN PROLOGUE  DUMACH
+C***PURPOSE  Compute the unit roundoff of the machine.
+C***CATEGORY  R1
+C***TYPE      DOUBLE PRECISION (RUMACH-S, DUMACH-D)
+C***KEYWORDS  MACHINE CONSTANTS
+C***AUTHOR  Hindmarsh, Alan C., (LLNL)
+C***DESCRIPTION
+C *Usage:
+C        DOUBLE PRECISION  A, DUMACH
+C        A = DUMACH()
+C
+C *Function Return Values:
+C     A : the unit roundoff of the machine.
+C
+C *Description:
+C     The unit roundoff is defined as the smallest positive machine
+C     number u such that  1.0 + u .ne. 1.0.  This is computed by DUMACH
+C     in a machine-independent manner.
+C
+C***REFERENCES  (NONE)
+C***ROUTINES CALLED  DUMSUM
+C***REVISION HISTORY  (YYYYMMDD)
+C   19930216  DATE WRITTEN
+C   19930818  Added SLATEC-format prologue.  (FNF)
+C   20030707  Added DUMSUM to force normal storage of COMP.  (ACH)
+C***END PROLOGUE  DUMACH
+C
+      DOUBLE PRECISION U, COMP
+C***FIRST EXECUTABLE STATEMENT  DUMACH
+      U = 1.0D0
+ 10   U = U*0.5D0
+      CALL DUMSUM(1.0D0, U, COMP)
+      IF (COMP .NE. 1.0D0) GO TO 10
+      DUMACH = U*2.0D0
+      RETURN
+C----------------------- End of Function DUMACH ------------------------
+      END
+      SUBROUTINE DUMSUM(A,B,C)
+C     Routine to force normal storing of A + B, for DUMACH.
+      DOUBLE PRECISION A, B, C
+      C = A + B
+      RETURN
+      END
+*DECK DCFODE
+      SUBROUTINE DCFODE (METH, ELCO, TESCO)
+C***BEGIN PROLOGUE  DCFODE
+C***SUBSIDIARY
+C***PURPOSE  Set ODE integrator coefficients.
+C***TYPE      DOUBLE PRECISION (SCFODE-S, DCFODE-D)
+C***AUTHOR  Hindmarsh, Alan C., (LLNL)
+C***DESCRIPTION
+C
+C  DCFODE is called by the integrator routine to set coefficients
+C  needed there.  The coefficients for the current method, as
+C  given by the value of METH, are set for all orders and saved.
+C  The maximum order assumed here is 12 if METH = 1 and 5 if METH = 2.
+C  (A smaller value of the maximum order is also allowed.)
+C  DCFODE is called once at the beginning of the problem,
+C  and is not called again unless and until METH is changed.
+C
+C  The ELCO array contains the basic method coefficients.
+C  The coefficients el(i), 1 .le. i .le. nq+1, for the method of
+C  order nq are stored in ELCO(i,nq).  They are given by a genetrating
+C  polynomial, i.e.,
+C      l(x) = el(1) + el(2)*x + ... + el(nq+1)*x**nq.
+C  For the implicit Adams methods, l(x) is given by
+C      dl/dx = (x+1)*(x+2)*...*(x+nq-1)/factorial(nq-1),    l(-1) = 0.
+C  For the BDF methods, l(x) is given by
+C      l(x) = (x+1)*(x+2)* ... *(x+nq)/K,
+C  where         K = factorial(nq)*(1 + 1/2 + ... + 1/nq).
+C
+C  The TESCO array contains test constants used for the
+C  local error test and the selection of step size and/or order.
+C  At order nq, TESCO(k,nq) is used for the selection of step
+C  size at order nq - 1 if k = 1, at order nq if k = 2, and at order
+C  nq + 1 if k = 3.
+C
+C***SEE ALSO  DLSODE
+C***ROUTINES CALLED  (NONE)
+C***REVISION HISTORY  (YYMMDD)
+C   791129  DATE WRITTEN
+C   890501  Modified prologue to SLATEC/LDOC format.  (FNF)
+C   890503  Minor cosmetic changes.  (FNF)
+C   930809  Renamed to allow single/double precision versions. (ACH)
+C***END PROLOGUE  DCFODE
+C**End
+      INTEGER METH
+      INTEGER I, IB, NQ, NQM1, NQP1
+      DOUBLE PRECISION ELCO, TESCO
+      DOUBLE PRECISION AGAMQ, FNQ, FNQM1, PC, PINT, RAGQ,
+     1   RQFAC, RQ1FAC, TSIGN, XPIN
+      DIMENSION ELCO(13,12), TESCO(3,12)
+      DIMENSION PC(12)
+C
+C***FIRST EXECUTABLE STATEMENT  DCFODE
+      GO TO (100, 200), METH
+C
+ 100  ELCO(1,1) = 1.0D0
+      ELCO(2,1) = 1.0D0
+      TESCO(1,1) = 0.0D0
+      TESCO(2,1) = 2.0D0
+      TESCO(1,2) = 1.0D0
+      TESCO(3,12) = 0.0D0
+      PC(1) = 1.0D0
+      RQFAC = 1.0D0
+      DO 140 NQ = 2,12
+C-----------------------------------------------------------------------
+C The PC array will contain the coefficients of the polynomial
+C     p(x) = (x+1)*(x+2)*...*(x+nq-1).
+C Initially, p(x) = 1.
+C-----------------------------------------------------------------------
+        RQ1FAC = RQFAC
+        RQFAC = RQFAC/NQ
+        NQM1 = NQ - 1
+        FNQM1 = NQM1
+        NQP1 = NQ + 1
+C Form coefficients of p(x)*(x+nq-1). ----------------------------------
+        PC(NQ) = 0.0D0
+        DO 110 IB = 1,NQM1
+          I = NQP1 - IB
+ 110      PC(I) = PC(I-1) + FNQM1*PC(I)
+        PC(1) = FNQM1*PC(1)
+C Compute integral, -1 to 0, of p(x) and x*p(x). -----------------------
+        PINT = PC(1)
+        XPIN = PC(1)/2.0D0
+        TSIGN = 1.0D0
+        DO 120 I = 2,NQ
+          TSIGN = -TSIGN
+          PINT = PINT + TSIGN*PC(I)/I
+ 120      XPIN = XPIN + TSIGN*PC(I)/(I+1)
+C Store coefficients in ELCO and TESCO. --------------------------------
+        ELCO(1,NQ) = PINT*RQ1FAC
+        ELCO(2,NQ) = 1.0D0
+        DO 130 I = 2,NQ
+ 130      ELCO(I+1,NQ) = RQ1FAC*PC(I)/I
+        AGAMQ = RQFAC*XPIN
+        RAGQ = 1.0D0/AGAMQ
+        TESCO(2,NQ) = RAGQ
+        IF (NQ .LT. 12) TESCO(1,NQP1) = RAGQ*RQFAC/NQP1
+        TESCO(3,NQM1) = RAGQ
+ 140    CONTINUE
+      RETURN
+C
+ 200  PC(1) = 1.0D0
+      RQ1FAC = 1.0D0
+      DO 230 NQ = 1,5
+C-----------------------------------------------------------------------
+C The PC array will contain the coefficients of the polynomial
+C     p(x) = (x+1)*(x+2)*...*(x+nq).
+C Initially, p(x) = 1.
+C-----------------------------------------------------------------------
+        FNQ = NQ
+        NQP1 = NQ + 1
+C Form coefficients of p(x)*(x+nq). ------------------------------------
+        PC(NQP1) = 0.0D0
+        DO 210 IB = 1,NQ
+          I = NQ + 2 - IB
+ 210      PC(I) = PC(I-1) + FNQ*PC(I)
+        PC(1) = FNQ*PC(1)
+C Store coefficients in ELCO and TESCO. --------------------------------
+        DO 220 I = 1,NQP1
+ 220      ELCO(I,NQ) = PC(I)/PC(2)
+        ELCO(2,NQ) = 1.0D0
+        TESCO(1,NQ) = RQ1FAC
+        TESCO(2,NQ) = NQP1/ELCO(1,NQ)
+        TESCO(3,NQ) = (NQ+2)/ELCO(1,NQ)
+        RQ1FAC = RQ1FAC/FNQ
+ 230    CONTINUE
+      RETURN
+C----------------------- END OF SUBROUTINE DCFODE ----------------------
+      END
+*DECK DINTDY
+      SUBROUTINE DINTDY (T, K, YH, NYH, DKY, IFLAG)
+C***BEGIN PROLOGUE  DINTDY
+C***SUBSIDIARY
+C***PURPOSE  Interpolate solution derivatives.
+C***TYPE      DOUBLE PRECISION (SINTDY-S, DINTDY-D)
+C***AUTHOR  Hindmarsh, Alan C., (LLNL)
+C***DESCRIPTION
+C
+C  DINTDY computes interpolated values of the K-th derivative of the
+C  dependent variable vector y, and stores it in DKY.  This routine
+C  is called within the package with K = 0 and T = TOUT, but may
+C  also be called by the user for any K up to the current order.
+C  (See detailed instructions in the usage documentation.)
+C
+C  The computed values in DKY are gotten by interpolation using the
+C  Nordsieck history array YH.  This array corresponds uniquely to a
+C  vector-valued polynomial of degree NQCUR or less, and DKY is set
+C  to the K-th derivative of this polynomial at T.
+C  The formula for DKY is:
+C               q
+C   DKY(i)  =  sum  c(j,K) * (T - tn)**(j-K) * h**(-j) * YH(i,j+1)
+C              j=K
+C  where  c(j,K) = j*(j-1)*...*(j-K+1), q = NQCUR, tn = TCUR, h = HCUR.
+C  The quantities  nq = NQCUR, l = nq+1, N = NEQ, tn, and h are
+C  communicated by COMMON.  The above sum is done in reverse order.
+C  IFLAG is returned negative if either K or T is out of bounds.
+C
+C***SEE ALSO  DLSODE
+C***ROUTINES CALLED  XERRWD
+C***COMMON BLOCKS    DLS001
+C***REVISION HISTORY  (YYMMDD)
+C   791129  DATE WRITTEN
+C   890501  Modified prologue to SLATEC/LDOC format.  (FNF)
+C   890503  Minor cosmetic changes.  (FNF)
+C   930809  Renamed to allow single/double precision versions. (ACH)
+C   010418  Reduced size of Common block /DLS001/. (ACH)
+C   031105  Restored 'own' variables to Common block /DLS001/, to
+C           enable interrupt/restart feature. (ACH)
+C   050427  Corrected roundoff decrement in TP. (ACH)
+C***END PROLOGUE  DINTDY
+C**End
+      INTEGER K, NYH, IFLAG
+      DOUBLE PRECISION T, YH, DKY
+      DIMENSION YH(NYH,*), DKY(*)
+      INTEGER IOWND, IOWNS,
+     1   ICF, IERPJ, IERSL, JCUR, JSTART, KFLAG, L,
+     2   LYH, LEWT, LACOR, LSAVF, LWM, LIWM, METH, MITER,
+     3   MAXORD, MAXCOR, MSBP, MXNCF, N, NQ, NST, NFE, NJE, NQU
+      DOUBLE PRECISION ROWNS,
+     1   CCMAX, EL0, H, HMIN, HMXI, HU, RC, TN, UROUND
+      COMMON /DLS001/ ROWNS(209),
+     1   CCMAX, EL0, H, HMIN, HMXI, HU, RC, TN, UROUND,
+     2   IOWND(6), IOWNS(6),
+     3   ICF, IERPJ, IERSL, JCUR, JSTART, KFLAG, L,
+     4   LYH, LEWT, LACOR, LSAVF, LWM, LIWM, METH, MITER,
+     5   MAXORD, MAXCOR, MSBP, MXNCF, N, NQ, NST, NFE, NJE, NQU
+      INTEGER I, IC, J, JB, JB2, JJ, JJ1, JP1
+      DOUBLE PRECISION C, R, S, TP
+      CHARACTER*80 MSG
+C
+C***FIRST EXECUTABLE STATEMENT  DINTDY
+      IFLAG = 0
+      IF (K .LT. 0 .OR. K .GT. NQ) GO TO 80
+      TP = TN - HU -  100.0D0*UROUND*SIGN(ABS(TN) + ABS(HU), HU)
+      IF ((T-TP)*(T-TN) .GT. 0.0D0) GO TO 90
+C
+      S = (T - TN)/H
+      IC = 1
+      IF (K .EQ. 0) GO TO 15
+      JJ1 = L - K
+      DO 10 JJ = JJ1,NQ
+ 10     IC = IC*JJ
+ 15   C = IC
+      DO 20 I = 1,N
+ 20     DKY(I) = C*YH(I,L)
+      IF (K .EQ. NQ) GO TO 55
+      JB2 = NQ - K
+      DO 50 JB = 1,JB2
+        J = NQ - JB
+        JP1 = J + 1
+        IC = 1
+        IF (K .EQ. 0) GO TO 35
+        JJ1 = JP1 - K
+        DO 30 JJ = JJ1,J
+ 30       IC = IC*JJ
+ 35     C = IC
+        DO 40 I = 1,N
+ 40       DKY(I) = C*YH(I,JP1) + S*DKY(I)
+ 50     CONTINUE
+      IF (K .EQ. 0) RETURN
+ 55   R = H**(-K)
+      DO 60 I = 1,N
+ 60     DKY(I) = R*DKY(I)
+      RETURN
+C
+ 80   MSG = 'DINTDY-  K (=I1) illegal      '
+      CALL XERRWD (MSG, 30, 51, 0, 1, K, 0, 0, 0.0D0, 0.0D0)
+      IFLAG = -1
+      RETURN
+ 90   MSG = 'DINTDY-  T (=R1) illegal      '
+      CALL XERRWD (MSG, 30, 52, 0, 0, 0, 0, 1, T, 0.0D0)
+      MSG='      T not in interval TCUR - HU (= R1) to TCUR (=R2)      '
+      CALL XERRWD (MSG, 60, 52, 0, 0, 0, 0, 2, TP, TN)
+      IFLAG = -2
+      RETURN
+C----------------------- END OF SUBROUTINE DINTDY ----------------------
+      END
+*DECK DPREPJ
+      SUBROUTINE DPREPJ (NEQ, Y, YH, NYH, EWT, FTEM, SAVF, WM, IWM,
+     1   F, JAC)
+C***BEGIN PROLOGUE  DPREPJ
+C***SUBSIDIARY
+C***PURPOSE  Compute and process Newton iteration matrix.
+C***TYPE      DOUBLE PRECISION (SPREPJ-S, DPREPJ-D)
+C***AUTHOR  Hindmarsh, Alan C., (LLNL)
+C***DESCRIPTION
+C
+C  DPREPJ is called by DSTODE to compute and process the matrix
+C  P = I - h*el(1)*J , where J is an approximation to the Jacobian.
+C  Here J is computed by the user-supplied routine JAC if
+C  MITER = 1 or 4, or by finite differencing if MITER = 2, 3, or 5.
+C  If MITER = 3, a diagonal approximation to J is used.
+C  J is stored in WM and replaced by P.  If MITER .ne. 3, P is then
+C  subjected to LU decomposition in preparation for later solution
+C  of linear systems with P as coefficient matrix.  This is done
+C  by DGEFA if MITER = 1 or 2, and by DGBFA if MITER = 4 or 5.
+C
+C  In addition to variables described in DSTODE and DLSODE prologues,
+C  communication with DPREPJ uses the following:
+C  Y     = array containing predicted values on entry.
+C  FTEM  = work array of length N (ACOR in DSTODE).
+C  SAVF  = array containing f evaluated at predicted y.
+C  WM    = real work space for matrices.  On output it contains the
+C          inverse diagonal matrix if MITER = 3 and the LU decomposition
+C          of P if MITER is 1, 2 , 4, or 5.
+C          Storage of matrix elements starts at WM(3).
+C          WM also contains the following matrix-related data:
+C          WM(1) = SQRT(UROUND), used in numerical Jacobian increments.
+C          WM(2) = H*EL0, saved for later use if MITER = 3.
+C  IWM   = integer work space containing pivot information, starting at
+C          IWM(21), if MITER is 1, 2, 4, or 5.  IWM also contains band
+C          parameters ML = IWM(1) and MU = IWM(2) if MITER is 4 or 5.
+C  EL0   = EL(1) (input).
+C  IERPJ = output error flag,  = 0 if no trouble, .gt. 0 if
+C          P matrix found to be singular.
+C  JCUR  = output flag = 1 to indicate that the Jacobian matrix
+C          (or approximation) is now current.
+C  This routine also uses the COMMON variables EL0, H, TN, UROUND,
+C  MITER, N, NFE, and NJE.
+C
+C***SEE ALSO  DLSODE
+C***ROUTINES CALLED  DGBFA, DGEFA, DVNORM
+C***COMMON BLOCKS    DLS001
+C***REVISION HISTORY  (YYMMDD)
+C   791129  DATE WRITTEN
+C   890501  Modified prologue to SLATEC/LDOC format.  (FNF)
+C   890504  Minor cosmetic changes.  (FNF)
+C   930809  Renamed to allow single/double precision versions. (ACH)
+C   010418  Reduced size of Common block /DLS001/. (ACH)
+C   031105  Restored 'own' variables to Common block /DLS001/, to
+C           enable interrupt/restart feature. (ACH)
+C***END PROLOGUE  DPREPJ
+C**End
+      EXTERNAL F, JAC
+      INTEGER NEQ, NYH, IWM
+      DOUBLE PRECISION Y, YH, EWT, FTEM, SAVF, WM
+      DIMENSION NEQ(*), Y(*), YH(NYH,*), EWT(*), FTEM(*), SAVF(*),
+     1   WM(*), IWM(*)
+      INTEGER IOWND, IOWNS,
+     1   ICF, IERPJ, IERSL, JCUR, JSTART, KFLAG, L,
+     2   LYH, LEWT, LACOR, LSAVF, LWM, LIWM, METH, MITER,
+     3   MAXORD, MAXCOR, MSBP, MXNCF, N, NQ, NST, NFE, NJE, NQU
+      DOUBLE PRECISION ROWNS,
+     1   CCMAX, EL0, H, HMIN, HMXI, HU, RC, TN, UROUND
+      COMMON /DLS001/ ROWNS(209),
+     1   CCMAX, EL0, H, HMIN, HMXI, HU, RC, TN, UROUND,
+     2   IOWND(6), IOWNS(6),
+     3   ICF, IERPJ, IERSL, JCUR, JSTART, KFLAG, L,
+     4   LYH, LEWT, LACOR, LSAVF, LWM, LIWM, METH, MITER,
+     5   MAXORD, MAXCOR, MSBP, MXNCF, N, NQ, NST, NFE, NJE, NQU
+      INTEGER I, I1, I2, IER, II, J, J1, JJ, LENP,
+     1   MBA, MBAND, MEB1, MEBAND, ML, ML3, MU, NP1
+      DOUBLE PRECISION CON, DI, FAC, HL0, R, R0, SRUR, YI, YJ, YJJ,
+     1   DVNORM
+C
+C***FIRST EXECUTABLE STATEMENT  DPREPJ
+      NJE = NJE + 1
+      IERPJ = 0
+      JCUR = 1
+      HL0 = H*EL0
+      GO TO (100, 200, 300, 400, 500), MITER
+C If MITER = 1, call JAC and multiply by scalar. -----------------------
+ 100  LENP = N*N
+      DO 110 I = 1,LENP
+ 110    WM(I+2) = 0.0D0
+      CALL JAC (NEQ, TN, Y, 0, 0, WM(3), N)
+      CON = -HL0
+      DO 120 I = 1,LENP
+ 120    WM(I+2) = WM(I+2)*CON
+      GO TO 240
+C If MITER = 2, make N calls to F to approximate J. --------------------
+ 200  FAC = DVNORM (N, SAVF, EWT)
+      R0 = 1000.0D0*ABS(H)*UROUND*N*FAC
+      IF (R0 .EQ. 0.0D0) R0 = 1.0D0
+      SRUR = WM(1)
+      J1 = 2
+      DO 230 J = 1,N
+        YJ = Y(J)
+        R = MAX(SRUR*ABS(YJ),R0/EWT(J))
+        Y(J) = Y(J) + R
+        FAC = -HL0/R
+        CALL F (NEQ, TN, Y, FTEM)
+        DO 220 I = 1,N
+ 220      WM(I+J1) = (FTEM(I) - SAVF(I))*FAC
+        Y(J) = YJ
+        J1 = J1 + N
+ 230    CONTINUE
+      NFE = NFE + N
+C Add identity matrix. -------------------------------------------------
+ 240  J = 3
+      NP1 = N + 1
+      DO 250 I = 1,N
+        WM(J) = WM(J) + 1.0D0
+ 250    J = J + NP1
+C Do LU decomposition on P. --------------------------------------------
+      CALL DGEFA (WM(3), N, N, IWM(21), IER)
+      IF (IER .NE. 0) IERPJ = 1
+      RETURN
+C If MITER = 3, construct a diagonal approximation to J and P. ---------
+ 300  WM(2) = HL0
+      R = EL0*0.1D0
+      DO 310 I = 1,N
+ 310    Y(I) = Y(I) + R*(H*SAVF(I) - YH(I,2))
+      CALL F (NEQ, TN, Y, WM(3))
+      NFE = NFE + 1
+      DO 320 I = 1,N
+        R0 = H*SAVF(I) - YH(I,2)
+        DI = 0.1D0*R0 - H*(WM(I+2) - SAVF(I))
+        WM(I+2) = 1.0D0
+        IF (ABS(R0) .LT. UROUND/EWT(I)) GO TO 320
+        IF (ABS(DI) .EQ. 0.0D0) GO TO 330
+        WM(I+2) = 0.1D0*R0/DI
+ 320    CONTINUE
+      RETURN
+ 330  IERPJ = 1
+      RETURN
+C If MITER = 4, call JAC and multiply by scalar. -----------------------
+ 400  ML = IWM(1)
+      MU = IWM(2)
+      ML3 = ML + 3
+      MBAND = ML + MU + 1
+      MEBAND = MBAND + ML
+      LENP = MEBAND*N
+      DO 410 I = 1,LENP
+ 410    WM(I+2) = 0.0D0
+      CALL JAC (NEQ, TN, Y, ML, MU, WM(ML3), MEBAND)
+      CON = -HL0
+      DO 420 I = 1,LENP
+ 420    WM(I+2) = WM(I+2)*CON
+      GO TO 570
+C If MITER = 5, make MBAND calls to F to approximate J. ----------------
+ 500  ML = IWM(1)
+      MU = IWM(2)
+      MBAND = ML + MU + 1
+      MBA = MIN(MBAND,N)
+      MEBAND = MBAND + ML
+      MEB1 = MEBAND - 1
+      SRUR = WM(1)
+      FAC = DVNORM (N, SAVF, EWT)
+      R0 = 1000.0D0*ABS(H)*UROUND*N*FAC
+      IF (R0 .EQ. 0.0D0) R0 = 1.0D0
+      DO 560 J = 1,MBA
+        DO 530 I = J,N,MBAND
+          YI = Y(I)
+          R = MAX(SRUR*ABS(YI),R0/EWT(I))
+ 530      Y(I) = Y(I) + R
+        CALL F (NEQ, TN, Y, FTEM)
+        DO 550 JJ = J,N,MBAND
+          Y(JJ) = YH(JJ,1)
+          YJJ = Y(JJ)
+          R = MAX(SRUR*ABS(YJJ),R0/EWT(JJ))
+          FAC = -HL0/R
+          I1 = MAX(JJ-MU,1)
+          I2 = MIN(JJ+ML,N)
+          II = JJ*MEB1 - ML + 2
+          DO 540 I = I1,I2
+ 540        WM(II+I) = (FTEM(I) - SAVF(I))*FAC
+ 550      CONTINUE
+ 560    CONTINUE
+      NFE = NFE + MBA
+C Add identity matrix. -------------------------------------------------
+ 570  II = MBAND + 2
+      DO 580 I = 1,N
+        WM(II) = WM(II) + 1.0D0
+ 580    II = II + MEBAND
+C Do LU decomposition of P. --------------------------------------------
+      CALL DGBFA (WM(3), MEBAND, N, ML, MU, IWM(21), IER)
+      IF (IER .NE. 0) IERPJ = 1
+      RETURN
+C----------------------- END OF SUBROUTINE DPREPJ ----------------------
+      END
+*DECK DSOLSY
+      SUBROUTINE DSOLSY (WM, IWM, X, TEM)
+C***BEGIN PROLOGUE  DSOLSY
+C***SUBSIDIARY
+C***PURPOSE  ODEPACK linear system solver.
+C***TYPE      DOUBLE PRECISION (SSOLSY-S, DSOLSY-D)
+C***AUTHOR  Hindmarsh, Alan C., (LLNL)
+C***DESCRIPTION
+C
+C  This routine manages the solution of the linear system arising from
+C  a chord iteration.  It is called if MITER .ne. 0.
+C  If MITER is 1 or 2, it calls DGESL to accomplish this.
+C  If MITER = 3 it updates the coefficient h*EL0 in the diagonal
+C  matrix, and then computes the solution.
+C  If MITER is 4 or 5, it calls DGBSL.
+C  Communication with DSOLSY uses the following variables:
+C  WM    = real work space containing the inverse diagonal matrix if
+C          MITER = 3 and the LU decomposition of the matrix otherwise.
+C          Storage of matrix elements starts at WM(3).
+C          WM also contains the following matrix-related data:
+C          WM(1) = SQRT(UROUND) (not used here),
+C          WM(2) = HL0, the previous value of h*EL0, used if MITER = 3.
+C  IWM   = integer work space containing pivot information, starting at
+C          IWM(21), if MITER is 1, 2, 4, or 5.  IWM also contains band
+C          parameters ML = IWM(1) and MU = IWM(2) if MITER is 4 or 5.
+C  X     = the right-hand side vector on input, and the solution vector
+C          on output, of length N.
+C  TEM   = vector of work space of length N, not used in this version.
+C  IERSL = output flag (in COMMON).  IERSL = 0 if no trouble occurred.
+C          IERSL = 1 if a singular matrix arose with MITER = 3.
+C  This routine also uses the COMMON variables EL0, H, MITER, and N.
+C
+C***SEE ALSO  DLSODE
+C***ROUTINES CALLED  DGBSL, DGESL
+C***COMMON BLOCKS    DLS001
+C***REVISION HISTORY  (YYMMDD)
+C   791129  DATE WRITTEN
+C   890501  Modified prologue to SLATEC/LDOC format.  (FNF)
+C   890503  Minor cosmetic changes.  (FNF)
+C   930809  Renamed to allow single/double precision versions
